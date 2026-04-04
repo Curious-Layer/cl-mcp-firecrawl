@@ -168,44 +168,211 @@ def register_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(
         name="crawl",
-        description="Crawl an entire website and extract content from all pages.",
+        description="Crawl multiple URLs and extract content based on specified options.",
     )
     def crawl(
-        api_key: str = Field(..., description="Firecrawl API key"),
-        url: str = Field(..., description="Root URL of website to crawl"),
-        max_depth: int = Field(
-            default=2,
-            description="Maximum depth to crawl (0-10)",
+        api_key: str = Field(..., description="Firecrawl API key for authentication"),
+        url: str = Field(..., description="The base URL to start crawling from"),
+        prompt: str | None = Field(
+            None,
+            description="Natural language prompt to generate crawler options",
+        ),
+        exclude_paths: str | None = Field(
+            None,
+            description="Comma-separated regex patterns for URLs to exclude",
+        ),
+        include_paths: str | None = Field(
+            None,
+            description="Comma-separated regex patterns for URLs to include",
+        ),
+        max_discovery_depth: int | None = Field(
+            None,
+            description="Maximum depth based on discovery order",
+        ),
+        sitemap: str = Field(
+            default="include",
+            description="Sitemap mode: skip, include, or only",
+        ),
+        ignore_query_parameters: bool = Field(
+            default=False,
+            description="Don't re-scrape same path with different query parameters",
+        ),
+        regex_on_full_url: bool = Field(
+            default=False,
+            description="Match patterns against full URL including query parameters",
         ),
         limit: int = Field(
-            default=100,
+            default=10000,
             description="Maximum number of pages to crawl",
         ),
-        format: str = Field(
+        crawl_entire_domain: bool = Field(
+            default=False,
+            description="Follow sibling and parent URLs, not just child paths",
+        ),
+        allow_external_links: bool = Field(
+            default=False,
+            description="Allow crawler to follow external links",
+        ),
+        allow_subdomains: bool = Field(
+            default=False,
+            description="Allow crawler to follow subdomains",
+        ),
+        delay: float | None = Field(
+            None,
+            description="Delay in seconds between scrapes",
+        ),
+        max_concurrency: int | None = Field(
+            None,
+            description="Maximum concurrent scrapes",
+        ),
+        formats: str = Field(
             default="markdown",
-            description="Output format: 'markdown' or 'json'",
+            description="Output formats (comma-separated): markdown, html, rawHtml, json, screenshot, links, images, summary, audio, branding, changeTracking",
+        ),
+        only_main_content: bool = Field(
+            default=True,
+            description="Extract only main content, excluding headers/footers",
+        ),
+        include_tags: str | None = Field(
+            None,
+            description="Comma-separated HTML tags to include",
+        ),
+        exclude_tags: str | None = Field(
+            None,
+            description="Comma-separated HTML tags to exclude",
+        ),
+        wait_for_selector: str | None = Field(
+            None,
+            description="CSS selector to wait for before scraping",
+        ),
+        mobile: bool = Field(
+            default=False,
+            description="Emulate mobile device",
+        ),
+        skip_tls_verification: bool = Field(
+            default=True,
+            description="Skip TLS certificate verification",
+        ),
+        proxy: str = Field(
+            default="auto",
+            description="Proxy type: basic, enhanced, or auto",
+        ),
+        block_ads: bool = Field(
+            default=True,
+            description="Block ads and cookie popups",
+        ),
+        remove_base64_images: bool = Field(
+            default=True,
+            description="Remove base64 encoded images",
+        ),
+        zero_data_retention: bool = Field(
+            default=False,
+            description="Enable zero data retention",
         ),
     ) -> str:
-        """Crawl a website and extract content from multiple pages.
+        """Crawl a website starting from a base URL with flexible options.
+
+        Supports URL filtering, sitemap control, concurrency management,
+        and full scraping options for each page.
 
         Args:
-            api_key: Firecrawl API authentication key
-            url: Root URL to start crawling
-            max_depth: Maximum depth to crawl
+            api_key: API authentication key
+            url: Base URL to start crawling
+            prompt: Natural language crawler options
+            exclude_paths: Regex patterns for URLs to exclude
+            include_paths: Regex patterns for URLs to include
+            max_discovery_depth: Maximum discovery depth
+            sitemap: skip, include, or only
+            ignore_query_parameters: Ignore different query parameters
+            regex_on_full_url: Match patterns on full URL
             limit: Maximum pages to crawl
-            format: Output format
+            crawl_entire_domain: Follow siblings and parents
+            allow_external_links: Allow external links
+            allow_subdomains: Allow subdomains
+            delay: Delay between scrapes in seconds
+            max_concurrency: Max concurrent scrapes
+            formats: Output formats (comma-separated)
+            only_main_content: Extract main content only
+            include_tags: HTML tags to include
+            exclude_tags: HTML tags to exclude
+            wait_for_selector: CSS selector to wait for
+            mobile: Mobile device emulation
+            skip_tls_verification: Skip TLS checks
+            proxy: Proxy strategy
+            block_ads: Ad/popup blocking
+            remove_base64_images: Remove base64 images
+            zero_data_retention: Enable zero data retention
 
         Returns:
-            JSON string with crawl results or error
+            JSON string with crawl job info or error
         """
+        # Build base request body
         body = {
             "url": url,
-            "maxDepth": max_depth,
+            "sitemap": sitemap,
+            "ignoreQueryParameters": ignore_query_parameters,
+            "regexOnFullURL": regex_on_full_url,
             "limit": limit,
-            "scrapeOptions": {
-                "formats": [format],
-            },
+            "crawlEntireDomain": crawl_entire_domain,
+            "allowExternalLinks": allow_external_links,
+            "allowSubdomains": allow_subdomains,
+            "zeroDataRetention": zero_data_retention,
         }
+
+        # Add optional prompt parameter
+        if prompt:
+            body["prompt"] = prompt
+
+        # Add path patterns if provided
+        if exclude_paths:
+            body["excludePaths"] = [p.strip() for p in exclude_paths.split(",")]
+        if include_paths:
+            body["includePaths"] = [p.strip() for p in include_paths.split(",")]
+
+        # Add optional discovery depth
+        if max_discovery_depth is not None:
+            body["maxDiscoveryDepth"] = max_discovery_depth
+
+        # Add optional delay and concurrency
+        if delay is not None:
+            body["delay"] = delay
+        if max_concurrency is not None:
+            body["maxConcurrency"] = max_concurrency
+
+        # Build scrapeOptions
+        format_list = [f.strip() for f in formats.split(",") if f.strip()]
+        formats_array = [{"type": fmt} for fmt in format_list]
+
+        scrape_options = {
+            "formats": formats_array,
+            "onlyMainContent": only_main_content,
+            "blockAds": block_ads,
+            "removeBase64Images": remove_base64_images,
+        }
+
+        if mobile:
+            scrape_options["mobile"] = mobile
+        if skip_tls_verification:
+            scrape_options["skipTlsVerification"] = skip_tls_verification
+        if proxy:
+            scrape_options["proxy"] = proxy
+
+        # Add include/exclude tags if provided
+        if include_tags:
+            scrape_options["includeTags"] = [t.strip() for t in include_tags.split(",")]
+        if exclude_tags:
+            scrape_options["excludeTags"] = [t.strip() for t in exclude_tags.split(",")]
+
+        # Add wait action if selector provided
+        if wait_for_selector:
+            scrape_options["actions"] = [
+                {
+                    "type": "wait",
+                    "selector": wait_for_selector,
+                }
+            ]
+
+        body["scrapeOptions"] = scrape_options
 
         result = make_firecrawl_request(
             method="POST",
@@ -218,30 +385,107 @@ def register_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(
         name="map",
-        description="Get a list of all URLs from a website without scraping content.",
+        description="Map all URLs on a website with optional filtering and search.",
     )
     def map(
-        api_key: str = Field(..., description="Firecrawl API key"),
-        url: str = Field(..., description="Root URL to map"),
+        api_key: str = Field(..., description="Firecrawl API key for authentication"),
+        url: str = Field(..., description="The base URL to start mapping from"),
+        search: str | None = Field(
+            None,
+            description="Search query to filter and order results by relevance",
+        ),
+        sitemap: str = Field(
+            default="include",
+            description="Sitemap mode: skip, include, or only",
+        ),
+        include_subdomains: bool = Field(
+            default=True,
+            description="Include subdomains of the website",
+        ),
+        ignore_query_parameters: bool = Field(
+            default=True,
+            description="Don't return URLs with query parameters",
+        ),
+        ignore_cache: bool = Field(
+            default=False,
+            description="Bypass sitemap cache to get fresh URLs",
+        ),
         limit: int = Field(
-            default=10000,
-            description="Maximum URLs to return",
+            default=5000,
+            description="Maximum number of URLs to return (max 100000)",
+        ),
+        timeout_ms: int | None = Field(
+            None,
+            description="Timeout in milliseconds",
+        ),
+        country: str | None = Field(
+            None,
+            description="ISO 3166-1 alpha-2 country code (e.g., US, DE, JP)",
+        ),
+        languages: str | None = Field(
+            None,
+            description="Comma-separated preferred languages (e.g., en-US,de-DE)",
         ),
     ) -> str:
         """Map all URLs on a website.
 
+        Discovers and lists all URLs found on a website with optional
+        filtering by search query, subdomain inclusion, and location settings.
+
         Args:
-            api_key: Firecrawl API authentication key
-            url: Root URL to map
+            api_key: API authentication key
+            url: Base URL to start mapping
+            search: Query to filter and order results
+            sitemap: skip, include, or only
+            include_subdomains: Include subdomains
+            ignore_query_parameters: Skip query parameter URLs
+            ignore_cache: Bypass sitemap cache
             limit: Maximum URLs to return
+            timeout_ms: Timeout in milliseconds
+            country: ISO country code for location
+            languages: Comma-separated language codes
 
         Returns:
-            JSON string with URL list or error
+            JSON string with mapped URLs or error
         """
+        # Validate limit
+        if limit > 100000:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": "Limit must be 100000 or less",
+                    "statusCode": 400,
+                    "message": "Invalid limit",
+                    "details": {},
+                }
+            )
+
+        # Build base request body
         body = {
             "url": url,
+            "sitemap": sitemap,
+            "includeSubdomains": include_subdomains,
+            "ignoreQueryParameters": ignore_query_parameters,
+            "ignoreCache": ignore_cache,
             "limit": limit,
         }
+
+        # Add optional search parameter
+        if search:
+            body["search"] = search
+
+        # Add optional timeout
+        if timeout_ms is not None:
+            body["timeout"] = timeout_ms
+
+        # Build location object if country or languages provided
+        if country or languages:
+            location = {}
+            if country:
+                location["country"] = country
+            if languages:
+                location["languages"] = [lang.strip() for lang in languages.split(",")]
+            body["location"] = location
 
         result = make_firecrawl_request(
             method="POST",
