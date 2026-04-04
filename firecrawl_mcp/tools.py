@@ -723,36 +723,106 @@ def register_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(
         name="agent",
-        description="Autonomously navigate and interact with websites to complete tasks.",
+        description="Autonomously navigate and interact with websites to extract data based on a prompt.",
     )
     def agent(
-        api_key: str = Field(..., description="Firecrawl API key"),
-        url: str = Field(..., description="Starting URL for agent navigation"),
-        objective: str = Field(
+        api_key: str = Field(..., description="Firecrawl API key for authentication"),
+        prompt: str = Field(
             ...,
-            description="Task or objective for the agent to complete",
+            description="Natural language description of data to extract (max 10000 characters)",
+            max_length=10000,
         ),
-        max_iterations: int = Field(
-            default=10,
-            description="Maximum iterations/steps (1-20)",
+        urls: str | None = Field(
+            None,
+            description="Optional comma-separated URLs to constrain the agent to",
+        ),
+        schema: str | None = Field(
+            None,
+            description="Optional JSON schema to structure the extracted data",
+        ),
+        max_credits: float | None = Field(
+            None,
+            description="Maximum credits to spend on this agent task (defaults to 2500)",
+        ),
+        strict_constrain_to_urls: bool = Field(
+            default=False,
+            description="If true, agent will only visit URLs provided in the urls parameter",
+        ),
+        model: str = Field(
+            default="spark-1-mini",
+            description="Model to use: spark-1-mini (cheaper, default) or spark-1-pro (higher accuracy)",
         ),
     ) -> str:
-        """Use an autonomous agent to navigate and complete tasks.
+        """Start an autonomous agent task for data extraction.
+
+        The agent will navigate websites and extract data based on your prompt.
+        This is an async operation - the response includes a job ID to check status.
 
         Args:
             api_key: Firecrawl API authentication key
-            url: Starting URL
-            objective: Task for the agent
-            max_iterations: Maximum steps to take
+            prompt: Description of what data to extract (max 10000 chars)
+            urls: Optional comma-separated URLs to constrain agent navigation
+            schema: Optional JSON schema for structured output
+            max_credits: Maximum credits to spend (default 2500)
+            strict_constrain_to_urls: Only visit provided URLs if true
+            model: spark-1-mini (default, 60% cheaper) or spark-1-pro (higher accuracy)
 
         Returns:
-            JSON string with agent results or error
+            JSON string with agent job ID or error
         """
+        # Validate prompt
+        if not prompt or len(prompt.strip()) == 0:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": "Prompt is required and cannot be empty",
+                    "statusCode": 400,
+                }
+            )
+
+        # Validate model
+        if model not in ["spark-1-mini", "spark-1-pro"]:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": "Model must be 'spark-1-mini' or 'spark-1-pro'",
+                    "statusCode": 400,
+                }
+            )
+
+        # Build request body
         body = {
-            "url": url,
-            "objective": objective,
-            "maxIterations": max_iterations,
+            "prompt": prompt,
+            "model": model,
         }
+
+        # Add optional URLs array if provided
+        if urls:
+            urls_list = [u.strip() for u in urls.split(",") if u.strip()]
+            if urls_list:
+                body["urls"] = urls_list
+
+        # Add optional schema if provided
+        if schema:
+            try:
+                schema_dict = json.loads(schema)
+                body["schema"] = schema_dict
+            except json.JSONDecodeError as e:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Invalid JSON schema: {str(e)}",
+                        "statusCode": 400,
+                    }
+                )
+
+        # Add optional max credits
+        if max_credits is not None:
+            body["maxCredits"] = max_credits
+
+        # Add strict URL constraint if URLs provided
+        if urls and strict_constrain_to_urls:
+            body["strictConstrainToURLs"] = True
 
         result = make_firecrawl_request(
             method="POST",
