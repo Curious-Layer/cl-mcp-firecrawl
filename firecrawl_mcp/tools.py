@@ -832,3 +832,50 @@ def register_tools(mcp: FastMCP) -> None:
         )
 
         return json.dumps(result)
+
+    @mcp.tool(
+        name="agent_status",
+        description="Check the status of an agent job and retrieve results when complete.",
+    )
+    def agent_status(
+        api_key: str = Field(..., description="Firecrawl API key for authentication"),
+        job_id: str = Field(
+            ...,
+            description="The agent job ID returned by the agent tool (UUID format)",
+        ),
+    ) -> str:
+        """Check the status and results of an agent job.
+
+        Agent jobs are asynchronous. Use this to poll for completion.
+        Poll every 15-30 seconds and keep polling for at least 2-3 minutes
+        before considering the request failed.
+
+        Args:
+            api_key: Firecrawl API authentication key
+            job_id: Agent job ID from agent tool response
+
+        Returns:
+            JSON string with job status:
+            - processing: Agent is still working, keep polling
+            - completed: Job finished, response includes extracted data
+            - failed: An error occurred during processing
+        """
+        # Validate job_id is not empty
+        if not job_id or len(job_id.strip()) == 0:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": "Job ID is required and cannot be empty",
+                    "statusCode": 400,
+                }
+            )
+
+        # Make GET request to check status
+        result = make_firecrawl_request(
+            method="GET",
+            endpoint=f"/agent/{job_id}",
+            api_key=api_key,
+            body=None,
+        )
+
+        return json.dumps(result)
