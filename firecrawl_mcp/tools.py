@@ -498,38 +498,165 @@ def register_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(
         name="search",
-        description="Search the web and retrieve full page content for results.",
+        description="Search the web and optionally scrape search results with advanced filtering options.",
     )
     def search(
-        api_key: str = Field(..., description="Firecrawl API key"),
-        query: str = Field(..., description="Search query"),
-        limit: int = Field(
-            default=10,
-            description="Maximum results to return",
+        api_key: str = Field(..., description="Firecrawl API key for authentication"),
+        query: str = Field(
+            ..., description="Search query (max 500 characters)", max_length=500
         ),
-        format: str = Field(
+        limit: int = Field(
+            default=5,
+            description="Maximum number of results to return (1-100)",
+            ge=1,
+            le=100,
+        ),
+        sources: str = Field(
+            default="web",
+            description="Search sources (comma-separated): web, images, news. Default: web",
+        ),
+        categories: str | None = Field(
+            None,
+            description="Filter by categories (comma-separated): github, research, pdf",
+        ),
+        tbs: str | None = Field(
+            None,
+            description="Time-based search filter (e.g., 'qdr:d' for past day, 'qdr:w' for past week, 'qdr:m' for past month)",
+        ),
+        location: str | None = Field(
+            None,
+            description="Geographic location for search results (e.g., 'San Francisco,California,United States')",
+        ),
+        country: str | None = Field(
+            None,
+            description="ISO country code for geo-targeting (e.g., 'US', 'DE', 'FR', 'JP'). Default: 'US'",
+        ),
+        timeout: int = Field(
+            default=60000,
+            description="Timeout in milliseconds (default: 60000)",
+            ge=1000,
+            le=300000,
+        ),
+        ignore_invalid_urls: bool = Field(
+            default=False,
+            description="Exclude invalid URLs from search results",
+        ),
+        enterprise: str | None = Field(
+            None,
+            description="Enterprise search options (comma-separated): anon, zdr. For Zero Data Retention (ZDR)",
+        ),
+        formats: str = Field(
             default="markdown",
-            description="Output format: 'markdown' or 'json'",
+            description="Scrape output formats (comma-separated): markdown, html, rawHtml, json, screenshot, links, images, summary, audio, branding",
+        ),
+        mobile: bool = Field(
+            default=False,
+            description="Emulate mobile device when scraping results",
+        ),
+        proxy: str = Field(
+            default="auto",
+            description="Proxy type: basic, enhanced, auto",
+        ),
+        block_ads: bool = Field(
+            default=True,
+            description="Enable ad-blocking and cookie popup blocking",
         ),
     ) -> str:
-        """Search the web and get full content from results.
+        """Search the web and optionally extract full content from results.
 
         Args:
             api_key: Firecrawl API authentication key
-            query: Search query
-            limit: Maximum results
-            format: Output format
+            query: Search query string
+            limit: Max results (1-100)
+            sources: Search sources (web, images, news)
+            categories: Filter by categories (github, research, pdf)
+            tbs: Time-based search filter
+            location: Geographic location for results
+            country: ISO country code
+            timeout: Request timeout in milliseconds
+            ignore_invalid_urls: Exclude invalid URLs
+            enterprise: Enterprise search options (anon, zdr)
+            formats: Scrape output formats
+            mobile: Emulate mobile device
+            proxy: Proxy type
+            block_ads: Enable ad blocking
 
         Returns:
             JSON string with search results or error
         """
+        # Validate limit range
+        if limit < 1 or limit > 100:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": "Limit must be between 1 and 100",
+                    "statusCode": 400,
+                }
+            )
+
+        # Validate timeout range
+        if timeout < 1000 or timeout > 300000:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": "Timeout must be between 1000 and 300000 milliseconds",
+                    "statusCode": 400,
+                }
+            )
+
+        # Parse comma-separated sources and build sources array
+        sources_list = [s.strip() for s in sources.split(",") if s.strip()]
+        sources_array = []
+        for source in sources_list:
+            source_obj = {"type": source}
+            # Add tbs and location to web source if provided
+            if source == "web":
+                if tbs:
+                    source_obj["tbs"] = tbs
+                if location:
+                    source_obj["location"] = location
+            sources_array.append(source_obj)
+
+        # Parse comma-separated categories
+        categories_list = []
+        if categories:
+            categories_list = [
+                {"type": c.strip()} for c in categories.split(",") if c.strip()
+            ]
+
+        # Parse comma-separated enterprise options
+        enterprise_list = []
+        if enterprise:
+            enterprise_list = [e.strip() for e in enterprise.split(",") if e.strip()]
+
+        format_list = [f.strip() for f in formats.split(",") if f.strip()]
+        formats_array = [{"type": fmt} for fmt in format_list]
+
         body = {
             "query": query,
             "limit": limit,
+            "sources": sources_array,
+            "timeout": timeout,
+            "ignoreInvalidURLs": ignore_invalid_urls,
             "scrapeOptions": {
-                "formats": [format],
+                "formats": formats_array,
+                "mobile": mobile,
+                "proxy": proxy,
+                "blockAds": block_ads,
             },
         }
+
+        # Add optional parameters if provided
+        if tbs and not sources_list:  # If tbs provided but not in sources
+            body["tbs"] = tbs
+        if location and not sources_list:  # If location provided but not in sources
+            body["location"] = location
+        if country:
+            body["country"] = country
+        if categories_list:
+            body["categories"] = categories_list
+        if enterprise_list:
+            body["enterprise"] = enterprise_list
 
         result = make_firecrawl_request(
             method="POST",
