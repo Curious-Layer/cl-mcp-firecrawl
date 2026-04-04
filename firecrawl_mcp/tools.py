@@ -668,60 +668,6 @@ def register_tools(mcp: FastMCP) -> None:
         return json.dumps(result)
 
     @mcp.tool(
-        name="extract",
-        description="Extract structured data from a webpage using a JSON schema.",
-    )
-    def extract(
-        api_key: str = Field(..., description="Firecrawl API key"),
-        url: str = Field(..., description="URL to extract from"),
-        schema: str = Field(
-            ...,
-            description="JSON schema definition for structured extraction",
-        ),
-        mode: str = Field(
-            default="llm-extraction",
-            description="Extraction mode: 'llm-extraction' or 'fast'",
-        ),
-    ) -> str:
-        """Extract structured data from a webpage using a schema.
-
-        Args:
-            api_key: Firecrawl API authentication key
-            url: Target URL
-            schema: JSON schema for desired output structure
-            mode: Extraction mode
-
-        Returns:
-            JSON string with extracted data or error
-        """
-        try:
-            schema_dict = json.loads(schema)
-        except json.JSONDecodeError as e:
-            error_response = {
-                "success": False,
-                "error": f"Invalid JSON schema: {str(e)}",
-                "statusCode": 400,
-                "message": "Schema must be valid JSON",
-                "details": {},
-            }
-            return json.dumps(error_response)
-
-        body = {
-            "url": url,
-            "schema": schema_dict,
-            "mode": mode,
-        }
-
-        result = make_firecrawl_request(
-            method="POST",
-            endpoint="/extract",
-            api_key=api_key,
-            body=body,
-        )
-
-        return json.dumps(result)
-
-    @mcp.tool(
         name="agent",
         description="Autonomously navigate and interact with websites to extract data based on a prompt.",
     )
@@ -874,6 +820,192 @@ def register_tools(mcp: FastMCP) -> None:
         result = make_firecrawl_request(
             method="GET",
             endpoint=f"/agent/{job_id}",
+            api_key=api_key,
+            body=None,
+        )
+
+        return json.dumps(result)
+
+    @mcp.tool(
+        name="extract",
+        description="Start an async extraction job to extract structured data from URLs using LLMs.",
+    )
+    def extract(
+        api_key: str = Field(..., description="Firecrawl API key for authentication"),
+        urls: str = Field(
+            ...,
+            description="Comma-separated URLs to extract data from (glob format supported)",
+        ),
+        prompt: str | None = Field(
+            None,
+            description="Custom prompt to guide the extraction process",
+        ),
+        schema: str | None = Field(
+            None,
+            description="JSON schema to structure the extracted data",
+        ),
+        enable_web_search: bool = Field(
+            default=False,
+            description="Use web search to find additional data during extraction",
+        ),
+        ignore_sitemap: bool = Field(
+            default=False,
+            description="Ignore sitemap.xml files during website scanning",
+        ),
+        include_subdomains: bool = Field(
+            default=True,
+            description="Include subdomains when scanning URLs",
+        ),
+        show_sources: bool = Field(
+            default=False,
+            description="Include sources used for extraction in response",
+        ),
+        ignore_invalid_urls: bool = Field(
+            default=True,
+            description="Ignore invalid URLs instead of failing entire request",
+        ),
+        formats: str = Field(
+            default="markdown",
+            description="Scrape output formats (comma-separated): markdown, html, rawHtml, json, screenshot, links, images, summary, audio, branding",
+        ),
+        only_main_content: bool = Field(
+            default=True,
+            description="Extract only main content, excluding headers/footers",
+        ),
+        mobile: bool = Field(
+            default=False,
+            description="Emulate mobile device during scraping",
+        ),
+        proxy: str = Field(
+            default="auto",
+            description="Proxy type: basic, enhanced, or auto",
+        ),
+        block_ads: bool = Field(
+            default=True,
+            description="Enable ad-blocking and cookie popup blocking",
+        ),
+    ) -> str:
+        """Start an async extraction job to extract structured data from URLs.
+
+        This is an async operation - returns a job ID to check status with extract_status.
+
+        Args:
+            api_key: Firecrawl API authentication key
+            urls: Comma-separated URLs to extract from (supports glob patterns)
+            prompt: Optional prompt to guide extraction
+            schema: Optional JSON schema for structured output
+            enable_web_search: Use web search for additional data
+            ignore_sitemap: Ignore sitemap.xml files
+            include_subdomains: Include subdomains in scanning
+            show_sources: Include sources in response
+            ignore_invalid_urls: Ignore invalid URLs
+            formats: Scrape output formats (comma-separated)
+            only_main_content: Extract main content only
+            mobile: Emulate mobile device
+            proxy: Proxy type
+            block_ads: Enable ad blocking
+
+        Returns:
+            JSON string with extraction job ID or error
+        """
+        # Validate URLs
+        urls_list = [u.strip() for u in urls.split(",") if u.strip()]
+        if not urls_list:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": "At least one URL is required",
+                    "statusCode": 400,
+                }
+            )
+
+        body = {
+            "urls": urls_list,
+            "enableWebSearch": enable_web_search,
+            "ignoreSitemap": ignore_sitemap,
+            "includeSubdomains": include_subdomains,
+            "showSources": show_sources,
+            "ignoreInvalidURLs": ignore_invalid_urls,
+        }
+
+        # Add optional prompt
+        if prompt:
+            body["prompt"] = prompt
+
+        # Add optional schema
+        if schema:
+            try:
+                schema_dict = json.loads(schema)
+                body["schema"] = schema_dict
+            except json.JSONDecodeError as e:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": f"Invalid JSON schema: {str(e)}",
+                        "statusCode": 400,
+                    }
+                )
+
+        format_list = [f.strip() for f in formats.split(",") if f.strip()]
+        formats_array = [{"type": fmt} for fmt in format_list]
+
+        scrape_options = {
+            "formats": formats_array,
+            "onlyMainContent": only_main_content,
+            "mobile": mobile,
+            "proxy": proxy,
+            "blockAds": block_ads,
+        }
+
+        body["scrapeOptions"] = scrape_options
+
+        result = make_firecrawl_request(
+            method="POST",
+            endpoint="/extract",
+            api_key=api_key,
+            body=body,
+        )
+
+        return json.dumps(result)
+
+    @mcp.tool(
+        name="extract_status",
+        description="Check the status of an extraction job and retrieve results when complete.",
+    )
+    def extract_status(
+        api_key: str = Field(..., description="Firecrawl API key for authentication"),
+        job_id: str = Field(
+            ...,
+            description="The extraction job ID returned by the extract tool (UUID format)",
+        ),
+    ) -> str:
+        """Check the status and results of an extraction job.
+
+        Extraction jobs are asynchronous. Use this to poll for completion.
+
+        Args:
+            api_key: Firecrawl API authentication key
+            job_id: Extraction job ID from extract tool response
+
+        Returns:
+            JSON string with job status:
+            - processing: Extraction is still running, keep polling
+            - completed: Job finished, response includes extracted data
+            - failed: An error occurred during extraction
+            - cancelled: Job was cancelled
+        """
+        if not job_id or len(job_id.strip()) == 0:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": "Job ID is required and cannot be empty",
+                    "statusCode": 400,
+                }
+            )
+
+        result = make_firecrawl_request(
+            method="GET",
+            endpoint=f"/extract/{job_id}",
             api_key=api_key,
             body=None,
         )
