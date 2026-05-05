@@ -440,6 +440,17 @@ web, images, news
 </details>
 
 <details>
+<summary><strong>Credential Not Connected</strong></summary>
+
+- **Cause:** No {SERVICE_NAME} credential linked to your account
+- **Solution:**
+  1. Go to **Credentials** in your MewCp dashboard
+  2. Connect your {SERVICE_NAME} account (OAuth) or add your API key (static)
+  3. Retry the request with the correct `X-Mewcp-Credential-Id` header
+
+</details>
+
+<details>
 <summary><strong>Rate Limit Exceeded (429)</strong></summary>
 
 - **Cause:** Too many requests in short time window, exceeding API rate limits
