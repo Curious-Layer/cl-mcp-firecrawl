@@ -8,6 +8,7 @@ that exposes Firecrawl's web scraping, crawling, and search capabilities.
 import logging
 
 from fastmcp import FastMCP
+from fastmcp_credentials import CredentialMiddleware, HeaderCredentialBackend
 
 from firecrawl_mcp.cli import parse_args
 from firecrawl_mcp.config import configure_logging
@@ -16,7 +17,8 @@ from firecrawl_mcp.tools import register_tools
 configure_logging()
 logger = logging.getLogger("firecrawl-mcp-server")
 
-mcp = FastMCP("CL Firecrawl MCP Server")
+backend = HeaderCredentialBackend()
+mcp = FastMCP("CL Firecrawl MCP Server", middleware=[CredentialMiddleware(backend)])
 register_tools(mcp)
 
 # Expose ASGI app for hosting platform's (e.g. Vercel) Python runtime.

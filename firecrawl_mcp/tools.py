@@ -1,6 +1,6 @@
 """Firecrawl MCP Server tools.
 
-All tenant-facing tools require api_key parameter for stateless multi-tenancy.
+Credentials are injected server-side via fastmcp-credentials middleware.
 Health check is unauthenticated as it doesn't access tenant data.
 """
 
@@ -43,7 +43,6 @@ def register_tools(mcp: FastMCP) -> None:
         description="Scrape a single URL and extract content in multiple formats.",
     )
     def scrape(
-        api_key: str = Field(..., description="Firecrawl API key for authentication"),
         url: str = Field(..., description="The URL to scrape"),
         formats: str = Field(
             default="markdown",
@@ -96,7 +95,6 @@ def register_tools(mcp: FastMCP) -> None:
         timeouts, and browser emulation.
 
         Args:
-            api_key: API authentication key
             url: Target URL
             formats: Output formats (comma-separated list)
             only_main_content: Filter to main page content
@@ -160,7 +158,6 @@ def register_tools(mcp: FastMCP) -> None:
         result = make_firecrawl_request(
             method="POST",
             endpoint="/scrape",
-            api_key=api_key,
             body=body,
         )
 
@@ -171,7 +168,6 @@ def register_tools(mcp: FastMCP) -> None:
         description="Crawl multiple URLs and extract content based on specified options.",
     )
     def crawl(
-        api_key: str = Field(..., description="Firecrawl API key for authentication"),
         url: str = Field(..., description="The base URL to start crawling from"),
         prompt: str | None = Field(
             None,
@@ -276,7 +272,6 @@ def register_tools(mcp: FastMCP) -> None:
         and full scraping options for each page.
 
         Args:
-            api_key: API authentication key
             url: Base URL to start crawling
             prompt: Natural language crawler options
             exclude_paths: Regex patterns for URLs to exclude
@@ -377,7 +372,6 @@ def register_tools(mcp: FastMCP) -> None:
         result = make_firecrawl_request(
             method="POST",
             endpoint="/crawl",
-            api_key=api_key,
             body=body,
         )
 
@@ -388,7 +382,6 @@ def register_tools(mcp: FastMCP) -> None:
         description="Map all URLs on a website with optional filtering and search.",
     )
     def map(
-        api_key: str = Field(..., description="Firecrawl API key for authentication"),
         url: str = Field(..., description="The base URL to start mapping from"),
         search: str | None = Field(
             None,
@@ -433,7 +426,6 @@ def register_tools(mcp: FastMCP) -> None:
         filtering by search query, subdomain inclusion, and location settings.
 
         Args:
-            api_key: API authentication key
             url: Base URL to start mapping
             search: Query to filter and order results
             sitemap: skip, include, or only
@@ -490,7 +482,6 @@ def register_tools(mcp: FastMCP) -> None:
         result = make_firecrawl_request(
             method="POST",
             endpoint="/map",
-            api_key=api_key,
             body=body,
         )
 
@@ -501,7 +492,6 @@ def register_tools(mcp: FastMCP) -> None:
         description="Search the web and optionally scrape search results with advanced filtering options.",
     )
     def search(
-        api_key: str = Field(..., description="Firecrawl API key for authentication"),
         query: str = Field(
             ..., description="Search query (max 500 characters)", max_length=500
         ),
@@ -565,7 +555,6 @@ def register_tools(mcp: FastMCP) -> None:
         """Search the web and optionally extract full content from results.
 
         Args:
-            api_key: Firecrawl API authentication key
             query: Search query string
             limit: Max results (1-100)
             sources: Search sources (web, images, news)
@@ -661,7 +650,6 @@ def register_tools(mcp: FastMCP) -> None:
         result = make_firecrawl_request(
             method="POST",
             endpoint="/search",
-            api_key=api_key,
             body=body,
         )
 
@@ -672,7 +660,6 @@ def register_tools(mcp: FastMCP) -> None:
         description="Autonomously navigate and interact with websites to extract data based on a prompt.",
     )
     def agent(
-        api_key: str = Field(..., description="Firecrawl API key for authentication"),
         prompt: str = Field(
             ...,
             description="Natural language description of data to extract (max 10000 characters)",
@@ -705,7 +692,6 @@ def register_tools(mcp: FastMCP) -> None:
         This is an async operation - the response includes a job ID to check status.
 
         Args:
-            api_key: Firecrawl API authentication key
             prompt: Description of what data to extract (max 10000 chars)
             urls: Optional comma-separated URLs to constrain agent navigation
             schema: Optional JSON schema for structured output
@@ -773,7 +759,6 @@ def register_tools(mcp: FastMCP) -> None:
         result = make_firecrawl_request(
             method="POST",
             endpoint="/agent",
-            api_key=api_key,
             body=body,
         )
 
@@ -784,7 +769,6 @@ def register_tools(mcp: FastMCP) -> None:
         description="Check the status of an agent job and retrieve results when complete.",
     )
     def agent_status(
-        api_key: str = Field(..., description="Firecrawl API key for authentication"),
         job_id: str = Field(
             ...,
             description="The agent job ID returned by the agent tool (UUID format)",
@@ -797,7 +781,6 @@ def register_tools(mcp: FastMCP) -> None:
         before considering the request failed.
 
         Args:
-            api_key: Firecrawl API authentication key
             job_id: Agent job ID from agent tool response
 
         Returns:
@@ -820,7 +803,6 @@ def register_tools(mcp: FastMCP) -> None:
         result = make_firecrawl_request(
             method="GET",
             endpoint=f"/agent/{job_id}",
-            api_key=api_key,
             body=None,
         )
 
@@ -831,7 +813,6 @@ def register_tools(mcp: FastMCP) -> None:
         description="Start an async extraction job to extract structured data from URLs using LLMs.",
     )
     def extract(
-        api_key: str = Field(..., description="Firecrawl API key for authentication"),
         urls: str = Field(
             ...,
             description="Comma-separated URLs to extract data from (glob format supported)",
@@ -890,7 +871,6 @@ def register_tools(mcp: FastMCP) -> None:
         This is an async operation - returns a job ID to check status with extract_status.
 
         Args:
-            api_key: Firecrawl API authentication key
             urls: Comma-separated URLs to extract from (supports glob patterns)
             prompt: Optional prompt to guide extraction
             schema: Optional JSON schema for structured output
@@ -962,7 +942,6 @@ def register_tools(mcp: FastMCP) -> None:
         result = make_firecrawl_request(
             method="POST",
             endpoint="/extract",
-            api_key=api_key,
             body=body,
         )
 
@@ -973,7 +952,6 @@ def register_tools(mcp: FastMCP) -> None:
         description="Check the status of an extraction job and retrieve results when complete.",
     )
     def extract_status(
-        api_key: str = Field(..., description="Firecrawl API key for authentication"),
         job_id: str = Field(
             ...,
             description="The extraction job ID returned by the extract tool (UUID format)",
@@ -984,7 +962,6 @@ def register_tools(mcp: FastMCP) -> None:
         Extraction jobs are asynchronous. Use this to poll for completion.
 
         Args:
-            api_key: Firecrawl API authentication key
             job_id: Extraction job ID from extract tool response
 
         Returns:
@@ -1006,7 +983,6 @@ def register_tools(mcp: FastMCP) -> None:
         result = make_firecrawl_request(
             method="GET",
             endpoint=f"/extract/{job_id}",
-            api_key=api_key,
             body=None,
         )
 

@@ -8,23 +8,20 @@ import logging
 from typing import Any, Dict, Optional
 
 import requests
+from fastmcp_credentials import get_credentials
 
 from .config import FIRECRAWL_API_BASE, FIRECRAWL_API_VERSION, API_TIMEOUT
 
 logger = logging.getLogger("firecrawl-mcp-server")
 
 
-def get_headers(api_key: str) -> Dict[str, str]:
-    """Build headers for Firecrawl API requests - stateless per request.
-
-    Args:
-        api_key: Firecrawl API key
-
-    Returns:
-        Dictionary of HTTP headers
-    """
+def get_headers() -> Dict[str, str]:
+    cred = get_credentials()
+    token = cred.access_token or cred.api_key
+    if not token:
+        raise ValueError("No credential available — ensure X-MCP-Cred-Api-Key or X-MCP-Cred-Access-Token header is set")
     return {
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
 
@@ -32,7 +29,6 @@ def get_headers(api_key: str) -> Dict[str, str]:
 def make_firecrawl_request(
     method: str,
     endpoint: str,
-    api_key: str,
     body: Optional[Dict[str, Any]] = None,
     params: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -41,14 +37,13 @@ def make_firecrawl_request(
     Args:
         method: HTTP method (GET, POST, etc.)
         endpoint: API endpoint path (e.g., '/scrape')
-        api_key: Firecrawl API key
         body: Optional request body
         params: Optional query parameters
 
     Returns:
         Response data or error dict
     """
-    headers = get_headers(api_key)
+    headers = get_headers()
     url = f"{FIRECRAWL_API_BASE}/{FIRECRAWL_API_VERSION}{endpoint}"
 
     try:
